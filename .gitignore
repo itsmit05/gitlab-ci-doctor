@@ -1,0 +1,14 @@
+# secrets & local config
+.env
+
+# runtime state and logs
+state.json
+*.log
+ci_analyzer.log*
+team_access.txt
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
