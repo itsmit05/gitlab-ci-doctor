@@ -8,8 +8,8 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat" alt="MIT License" /></a>
   <img src="https://img.shields.io/badge/python-3.9%2B-3776AB?style=flat&logo=python&logoColor=white" alt="Python 3.9+" />
   <img src="https://img.shields.io/badge/GitLab-API%20v4-FC6D26?style=flat&logo=gitlab&logoColor=white" alt="GitLab API v4" />
-  <img src="https://img.shields.io/badge/LLM-Ollama%20(local)-000000?style=flat&logo=ollama&logoColor=white" alt="Ollama" />
-  <img src="https://img.shields.io/badge/data-never%20leaves%20your%20network-blue?style=flat" alt="Self-hosted" />
+  <img src="https://img.shields.io/badge/LLM-Ollama%20(local)%20%7C%20Groq-000000?style=flat&logo=ollama&logoColor=white" alt="Ollama or Groq" />
+  <img src="https://img.shields.io/badge/secrets-masked%20before%20AI-blue?style=flat" alt="Secrets masked" />
   <img src="https://img.shields.io/badge/GitLab%20access-read--only-brightgreen?style=flat" alt="Read-only" />
 </p>
 
@@ -25,7 +25,7 @@ Multiply that by 270 repositories.
 
 ## What this does
 
-Polls GitLab for failed pipelines, pulls the failed job's log, sends it to a **local** LLM,
+Polls GitLab for failed pipelines, pulls the failed job's log, sends it to an LLM (**local** Ollama by default, or Groq),
 and emails the owning team an explanation plus concrete fix steps.
 
 ```
@@ -57,10 +57,12 @@ HOW TO FIX
 | Decision | Reason |
 |---|---|
 | **Polling, not webhooks** | Needs no admin rights on 270 repos, and no inbound port. Runs from anywhere that can reach GitLab. |
-| **Local LLM via Ollama** | Job logs contain source paths, internal hostnames and stack traces. None of it should go to a third-party API. |
+| **Local LLM by default, Groq optional** | Job logs contain source paths, internal hostnames and stack traces, so Ollama keeps them on your network. Set `AI_PROVIDER=groq` when speed matters more (seconds instead of minutes on CPU). |
+| **Secrets masked first** | Passwords, tokens, AWS keys, JWTs and `user:pass@` URLs are replaced with `[MASKED]` before any log reaches the model. |
+| **Cut-off logs flagged** | If GitLab stopped saving the log at its size limit, the email says the real error is probably missing and how to fix the noisy job, instead of guessing. |
 | **Read-only token** (`read_api`) | The tool physically cannot change your pipelines. Every GitLab call is a `GET`. |
 | **Email, not chat** | Alerts land where the owning team already looks, with no new tool to adopt. |
-| **Degrades instead of failing** | If Ollama is down, you still get the raw log tail. A failure is never silently dropped. |
+| **Degrades instead of failing** | If the LLM is down, you still get the raw log tail. A failure is never silently dropped. |
 | **Package facts injected into the prompt** | For npm errors it looks up the *real* latest version, so the model states a fact rather than guessing. |
 
 ---
@@ -74,7 +76,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Fill in the four values marked `TODO` in `.env`, then:
+Fill in the values marked `TODO` in `.env` (plus `GROQ_API_KEY` if you use Groq), then:
 
 ```bash
 python main.py
@@ -107,9 +109,13 @@ before wiring anything up.
 | `POLL_INTERVAL_SECONDS` | | `180` | How often to check |
 | `ACTIVITY_WINDOW_HOURS` | | `0` | `0` scans everything each cycle. Above `0` is lighter but **can miss** failures on re-runs |
 | `AI_ENABLED` | | `true` | `false` emails the raw log tail and never calls the LLM |
+| `AI_PROVIDER` | | `ollama` | `ollama` (local) or `groq` (cloud) |
 | `OLLAMA_URL` | | `http://localhost:11434` | Ollama endpoint |
 | `OLLAMA_MODEL` | | `qwen2.5:7b` | Any Ollama model |
 | `OLLAMA_TIMEOUT` | | `600` | CPU inference is slow; be generous |
+| `GROQ_API_KEY` | groq only | — | Free key from [console.groq.com](https://console.groq.com) |
+| `GROQ_MODEL` | | `openai/gpt-oss-120b` | Any Groq chat model |
+| `GROQ_TIMEOUT` | | `60` | Seconds; one automatic retry on rate limit |
 | `LOG_MAX_CHARS` | | `12000` | How much of the log tail reaches the model |
 
 ---
@@ -132,13 +138,13 @@ before wiring anything up.
    download the job log             ──►  GET /jobs/:id/trace
               │
               ▼
-   strip ANSI codes, keep the tail
+   strip ANSI codes, keep the tail, mask secrets
               │
               ▼
    look up real npm versions if the log names a package
               │
               ▼
-   Ollama  ── unreachable ──►  fall back to raw log tail
+   Ollama / Groq  ── unreachable ──►  fall back to raw log tail
               │
               ▼
    email the team, record in state.json
@@ -155,12 +161,13 @@ ones. First run starts watching from *now* rather than emailing your entire hist
 ## Requirements
 
 - Python 3.9+
-- [Ollama](https://ollama.com) reachable from wherever this runs — optional, set `AI_ENABLED=false` to skip
+- [Ollama](https://ollama.com) reachable from wherever this runs, **or** a [Groq](https://console.groq.com) API key — optional, set `AI_ENABLED=false` to skip
 - A GitLab personal access token with `read_api`
 - An SMTP mailbox to send from
 
 Model choice is a speed/quality trade-off. `qwen2.5:7b` gives good explanations;
-`llama3.2:1b` runs on almost anything but is noticeably vaguer.
+`llama3.2:1b` runs on almost anything but is noticeably vaguer. On Groq,
+`openai/gpt-oss-120b` answers in a few seconds.
 
 ---
 
@@ -184,7 +191,7 @@ One-off read-only helpers, useful when setting the tool up:
 ## Notes
 
 - Every GitLab call is a `GET`. There is no code path that writes to GitLab.
-- Job logs are sent only to your own Ollama instance.
+- With `AI_PROVIDER=ollama` (default), job logs are sent only to your own Ollama instance. With `groq`, the masked log tail goes to Groq's API.
 - `.env`, `state.json` and log files are gitignored.
 
 ## License

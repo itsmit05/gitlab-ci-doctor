@@ -5,7 +5,7 @@ Every POLL_INTERVAL_SECONDS it:
   1. finds recently-active projects (or a fixed PROJECT_IDS list),
   2. asks each for pipelines that FAILED since the last check,
   3. downloads the failed job's log,
-  4. gets an AI analysis from local Ollama,
+  4. gets an AI analysis (local Ollama or Groq),
   5. emails the team.
 
 Read-only against GitLab. No inbound connection required.
@@ -159,7 +159,7 @@ def run_cycle():
 
 
 def _poll_loop():
-    print(f"[loop] Polling every {config.POLL_INTERVAL_SECONDS}s. Model={config.OLLAMA_MODEL}")
+    print(f"[loop] Polling every {config.POLL_INTERVAL_SECONDS}s. Model={config.AI_PROVIDER}:{config.AI_MODEL}")
     while True:
         try:
             run_cycle()
@@ -193,7 +193,7 @@ def status():
     return {
         "service": "gitlab-ci-failure-analyzer",
         "gitlab_url": config.GITLAB_URL or "(not set)",
-        "model": config.OLLAMA_MODEL,
+        "model": f"{config.AI_PROVIDER}:{config.AI_MODEL}",
         "poll_interval_seconds": config.POLL_INTERVAL_SECONDS,
         "watching": config.PROJECT_IDS or "all active projects",
         "config_missing": config.missing_required(),

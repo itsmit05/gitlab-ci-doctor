@@ -33,13 +33,19 @@ POLL_INTERVAL_SECONDS = int(os.environ.get("POLL_INTERVAL_SECONDS", "180"))
 #      failures when a pipeline is run without a fresh push, so keep 0).
 ACTIVITY_WINDOW_HOURS = int(os.environ.get("ACTIVITY_WINDOW_HOURS", "0"))
 
-# --- Ollama ---
-# Set AI_ENABLED=false to skip the LLM entirely and email the raw log tail only
-# (Ollama is left untouched so other tools can still use it).
+# --- AI ---
+# Set AI_ENABLED=false to skip the LLM entirely and email the raw log tail only.
+# AI_PROVIDER: "ollama" (local, logs stay on your network) or "groq" (cloud, fast).
 AI_ENABLED = _bool(os.environ.get("AI_ENABLED"), True)
+AI_PROVIDER = os.environ.get("AI_PROVIDER", "ollama").strip().lower()
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434").rstrip("/")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
 OLLAMA_TIMEOUT = int(os.environ.get("OLLAMA_TIMEOUT", "600"))
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_URL = os.environ.get("GROQ_URL", "https://api.groq.com/openai/v1/chat/completions")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+GROQ_TIMEOUT = int(os.environ.get("GROQ_TIMEOUT", "60"))
+AI_MODEL = GROQ_MODEL if AI_PROVIDER == "groq" else OLLAMA_MODEL
 
 # --- Email ---
 SMTP_HOST = os.environ.get("SMTP_HOST", "smtp.example.com")
@@ -67,4 +73,6 @@ def missing_required():
         problems.append("SMTP_PASSWORD")
     if not EMAIL_TO:
         problems.append("EMAIL_TO")
+    if AI_ENABLED and AI_PROVIDER == "groq" and not GROQ_API_KEY:
+        problems.append("GROQ_API_KEY")
     return problems
